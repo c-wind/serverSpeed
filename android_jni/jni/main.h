@@ -206,7 +206,7 @@ void *tcp_conn_start(void *dat);
 int tcp_echo_init(session_t *s, char *ip, int timeout, int pack_size, int times, int tag, int timer);
 void *tcp_echo_start(void *dat);
 
-#define JNI_FUNC(f) Java_org_codecn_speed_VPNJni_##f
+#define JNI_FUNC(f) Java_jni_VPNJni_##f
 
 
 #endif
