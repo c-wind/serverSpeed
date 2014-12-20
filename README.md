@@ -1,4 +1,1 @@
-serverSpeed
-===========
-
-android端到服务器间udp/tcp测速
+serverSpeed是一个android手机端到服务器间udp/tcp对比测速软件
