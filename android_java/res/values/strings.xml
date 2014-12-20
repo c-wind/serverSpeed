@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">网络测速</string>
+
+    <string name="hello_world">Hello world!</string>
+    <string name="action_exit">退出</string>
+
+    <string name="server_a">节点A</string>
+    <string name="server_a_ip">122.224.73.165(无Qos)</string>
+
+    <string name="server_b">节点B</string>
+    <string name="server_b_ip">221.228.205.190(Qos)</string>
+
+    <string name="pack_len">包长</string>
+    <string name="pack_len_default">64(字节)</string>
+
+    <string name="speed">发包速率</string>
+    <string name="speed_default">20(包/秒)</string>
+
+    <string name="timer">测速时长</string>
+    <string name="timer_default">60(秒)</string>
+
+    <string name="timeout">超时</string>
+    <string name="timeout_default">5(秒)</string>
+
+    <string name="buttonStart">开始测速</string>
+    <string name="buttonUpload">上传结果</string>
+
+    <string name="result">测速结果：</string>
+    <string name="resultDetail">测速日志：</string>
+    <string name="textNil"></string>
+    <string name="udp">UDP</string>
+    <string name="tcp_conn">TCP Conn</string>
+    <string name="tcp_echo">TCP Echo</string>
+
+</resources>
