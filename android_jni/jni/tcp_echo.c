@@ -9,30 +9,23 @@
 #include "main.h"
 #include "message_list.h"
 
-int tcp_echo_init(session_t *s, char *ip, int timeout, int pack_size, int times, int tag, int timer)
+int tcp_echo_init(session_t *s, char *ip, int timeout, int times, int tag, int timer, int type)
 {
     memset(s, 0, sizeof(*s));
 
     s->fd = socket(AF_INET, SOCK_STREAM, 0);
-    s->type = CHECK_TYPE_TCP_ECHO;
+    s->type = type;
     s->ip = ip;
     s->port = DEFAULT_PORT;
     sprintf(s->addr_str, "%s:%d", ip, s->port);
     s->addr.sin_family = AF_INET;
     s->addr.sin_addr.s_addr = inet_addr(s->ip);
     s->addr.sin_port = htons(s->port);
-    s->num = 0;
     s->tag = tag;
     s->timeout = timeout;
 
     s->max_times = timer * times;
     s->interval = 1000000 / times;
-
-    if (pack_size > 1500)
-    {
-        pack_size = 1500;
-    }
-    s->pack_size = pack_size - 40;
 
     struct timeval tv = {timeout, 0};
 
@@ -50,14 +43,16 @@ int tcp_echo_init(session_t *s, char *ip, int timeout, int pack_size, int times,
 }
 
 
-int tcp_echo_send(session_t *s)
+int tcp_echo_send(session_t *s, int i)
 {
-    int idx = s->num++, len = 0, n = 0, size = s->pack_size;
+    int len = 0, n = 0;
     char buf[2048];
+    int size_idx = i % 128;
+    int size = s->pack_size[size_idx] - 28;
 
-    *(int *)buf = idx;
+    *(int *)buf = i;
 
-    gettimeofday(&s->time_list[idx].b, NULL);
+    gettimeofday(&s->time_list[i].b, NULL);
 
     while(len < size)
     {
@@ -71,21 +66,20 @@ int tcp_echo_send(session_t *s)
         len += n;
     }
 
-    log_debug("%x send idx:%d ok", s->tag, idx);
+    log_debug("%x send idx:%d ok", s->tag, i);
 
     return 0;
 }
 
 
-int tcp_echo_recv(session_t *s)
+int tcp_echo_recv(session_t *s, int size)
 {
     int idx, len = 0, n = 0;
     char buf[2048];
 
-
-    while(len < s->pack_size)
+    while(len < size)
     {
-        n = read(s->fd, buf + len, s->pack_size - len);
+        n = read(s->fd, buf + len, size - len);
         if (n == -1)
         {
             log_error("read fd:%d error:%s", s->fd, strerror(errno));
@@ -117,10 +111,13 @@ void *tcp_echo_recv_pthread(void *dat)
 
     for(i=0; i<s->max_times; i++)
     {
-        if (tcp_echo_recv(s) == -1)
+        int size_idx = i % 128;
+        int size = s->pack_size[size_idx] - 28;
+
+        if (tcp_echo_recv(s, size) == -1)
         {
             log_error("%d tcp_echo_recv error", s->tag);
-            push_message(s->id, ACTION_RESULT, s->type, s->tag, -1, -1);
+            push_result(s->id, ACTION_RESULT, s->type, s->tag, -1, -1, -1, -1);
             push_action(s->id, ACTION_STOP, s->type, s->tag);
             close(s->fd);
             return NULL;
@@ -128,13 +125,13 @@ void *tcp_echo_recv_pthread(void *dat)
 
         delay = INTERVAL(s->time_list[i].e, s->time_list[i].b);
         sum += delay;
-        push_message(s->id, ACTION_DETAIL, s->type, s->tag, delay, 0);
+        push_detail(s->id, s->type, s->tag, delay, size);
         log_info("%d idx:%d delay:%d", s->tag, i, delay);
     }
 
     avg = sum / s->max_times;
 
-    push_message(s->id, ACTION_RESULT, s->type, s->tag, -1, avg);
+    push_result(s->id, ACTION_RESULT, s->type, s->tag, avg, s->max_times, s->max_times, 0);
 
     push_action(s->id, ACTION_STOP, s->type, s->tag);
 
@@ -158,7 +155,7 @@ void *tcp_echo_start(void *dat)
     {
         gettimeofday(&b, NULL);
 
-        if (tcp_echo_send(s) == -1)
+        if (tcp_echo_send(s, i) == -1)
         {
             log_error("%d tcp_echo_send error", s->tag);
             close(s->fd);

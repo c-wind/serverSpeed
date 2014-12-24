@@ -16,6 +16,8 @@ typedef struct {
     int tag;
     int value;
     int arg1;
+    int arg2;
+    int arg3;
 }jni_message_t;
 
 typedef struct {
@@ -34,6 +36,10 @@ void message_list_init();
 void push_action(int id, int what, int type, int tag);
 
 void push_message(int id, int what, int type, int tag, int value, int arg1);
+
+void push_detail(int id, int type, int tag, int val, int arg1);
+
+void push_result(int id, int what, int type, int tag, int value, int arg1, int arg2, int arg3);
 
 int pop_message(jni_message_t *j);
 

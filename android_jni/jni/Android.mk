@@ -8,7 +8,7 @@ LCAL_PRELINK_MODULE := false
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS := -Wall -DBUILD_JNI -I./
-LOCAL_SRC_FILES := main.c tcp_conn.c tcp_echo.c udp_echo.c message_list.c
+LOCAL_SRC_FILES := main.c tcp_conn.c tcp_echo.c udp_echo.c message_list.c report.c
 
 LOCAL_MODULE := speed
 LOCAL_LDLIBS := -llog 

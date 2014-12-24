@@ -13,11 +13,11 @@
 
 #define MAX_EVENTS 1024
 
-int tcp_conn_init(session_t *s, char *ip, int timeout, int pack_size, int times, int tag, int timer)
+int tcp_conn_init(session_t *s, char *ip, int timeout, int times, int tag, int timer, int type)
 {
     memset(s, 0, sizeof(*s));
 
-    s->type = CHECK_TYPE_TCP_CONN;
+    s->type = type;
     s->ip = ip;
     s->tag = tag;
     s->port = DEFAULT_PORT;
@@ -132,48 +132,45 @@ int tcp_conn_check(session_t *s)
             if (s->time_list[k].stat == 1)
             {
                 int d = INTERVAL(s->time_list[k].e, s->time_list[k].b);
-                push_message(s->id, ACTION_DETAIL, s->type, s->tag, d, 0);
+                push_detail(s->id, s->type, s->tag, d, 0);
                 continue;
             }
 
             if (s->time_list[i].b.tv_sec < (e.tv_sec - s->timeout))
             {
-                push_message(s->id, ACTION_DETAIL, s->type, s->tag, -1, 0);
+                push_detail(s->id, s->type, s->tag, -1, 0);
                 continue;
             }
             break;
         }
     }
 
-    int drop = 0, sum = 0, ok = 0, avg = 0;
+    int drop = 0, sum = 0, recv_num = 0, avg = 0;
 
     for (k = 0; k<s->max_times; k++)
     {
-        if (s->time_list[k].stat == 0)
-        {
-            drop++;
-
-        }
-        else
+        if (s->time_list[k].stat)
         {
             sum += INTERVAL(s->time_list[k].e, s->time_list[k].b);
-            ok++;
+            recv_num++;
         }
     }
 
-    if (ok == 0)
+    if (recv_num == 0)
     {
         avg = -1;
     }
     else
     {
-        avg = sum / ok;
+        avg = sum / s->max_times;
     }
 
     log_info("drop:%d, avg:%d", drop, avg);
-    push_message(s->id, ACTION_RESULT, s->type, s->tag, drop, avg);
+
+    push_result(s->id, ACTION_RESULT, s->type, s->tag, avg, s->max_times, recv_num, drop);
 
     push_action(s->id, ACTION_STOP, s->type, s->tag);
+
 
     return 0;
 }

@@ -12,7 +12,7 @@
 
 int id_idx = 0;
 
-int udp_echo_init(session_t *s, char *ip, int timeout, int pack_size, int times, int tag, int timer)
+int udp_echo_init(session_t *s, char *ip, int timeout, int times, int tag, int timer, int type)
 {
     memset(s, 0, sizeof(*s));
 
@@ -24,7 +24,7 @@ int udp_echo_init(session_t *s, char *ip, int timeout, int pack_size, int times,
         return -1;
     }
 
-    s->type = CHECK_TYPE_UDP_ECHO;
+    s->type = type;
     s->ip = ip;
     s->port = DEFAULT_PORT;
     s->tag = tag;
@@ -33,17 +33,11 @@ int udp_echo_init(session_t *s, char *ip, int timeout, int pack_size, int times,
     s->addr.sin_family = AF_INET;
     s->addr.sin_addr.s_addr = inet_addr(s->ip);
     s->addr.sin_port = htons(s->port);
-    s->num = 0;
     s->timeout = timeout;
     s->max_times = timer * times;
     s->interval = 1000000 / times;
-    if (pack_size > 1500)
-    {
-        pack_size = 1500;
-    }
-    s->pack_size = pack_size - 28;
 
-    log_info("%d udp data size:%d, interval:%d, max_times:%d, timeout:%d", s->tag, s->pack_size, s->interval, s->max_times, s->timeout);
+    log_info("%d udp interval:%d, max_times:%d, timeout:%d", s->tag, s->interval, s->max_times, s->timeout);
 
     return 0;
 }
@@ -75,7 +69,7 @@ void *udp_echo_recv(void *dat)
             if (errno != EAGAIN)
             {
                 log_error("recv %s error:%d:%s", s->addr_str, errno, strerror(errno));
-                return NULL;
+                goto error_return;
             }
         }
 
@@ -95,8 +89,12 @@ void *udp_echo_recv(void *dat)
                 s->time_list[idx].e = e;
                 s->recv_idx++;
                 int d = INTERVAL(s->time_list[idx].e, s->time_list[idx].b);
+                if (d < 0)
+                {
+                    log_error("idx:%d, b.sec:%d usec:%d, e.sec:%d usec:%d", idx, (int)s->time_list[idx].b.tv_sec, (int)s->time_list[idx].b.tv_usec, (int)s->time_list[idx].e.tv_sec, (int)s->time_list[idx].e.tv_usec);
+                }
                 s->time_list[idx].stat = d;
-                push_message(s->id, ACTION_DETAIL, s->type, s->tag, d, 0);
+                push_detail(s->id, s->type, s->tag, d, ret);
                 log_debug("id:%d, type:%d, tag:%d, delay:%d", s->id, s->type, s->tag, d);
             }
         }
@@ -109,7 +107,7 @@ void *udp_echo_recv(void *dat)
                 continue;
             }
 
-            push_message(s->id, ACTION_DETAIL, s->type, s->tag, -1, 0);
+            push_detail(s->id, s->type, s->tag, -1, -1);
             s->time_list[s->del_idx].stat = -1;
             log_debug("idx:%d, type:%d, tag:%d, b:%d, e:%d, timeout", s->del_idx, s->type, s->tag, (int)s->time_list[s->del_idx].b.tv_sec, (int)e.tv_sec);
             s->del_idx++;
@@ -119,33 +117,29 @@ void *udp_echo_recv(void *dat)
 
     close(s->fd);
 
-    int i, drop = 0, ok = 0, avg, sum = 0;
-
+    int i, recv_num = 0, drop = 0, avg, sum = 0;
     for (i=0; i<s->max_times; i++)
     {
-        if (s->time_list[i].stat < 1)
+        if (s->time_list[i].stat > 0)
         {
-            drop++;
-        }
-        else
-        {
-            ok++;
+            recv_num++;
             sum += s->time_list[i].stat;
         }
     }
 
-    if (ok == 0)
+    if (recv_num == 0)
     {
+error_return:
         avg = -1;
         drop = 100;
         log_info("%d drop:%d, avg:%d",  s->tag, drop, avg);
     } else {
-        avg = sum / ok;
-        log_info("%d drop:%d, avg:%d",  s->tag, drop, avg);
-        drop = (int)(drop * 100)/s->max_times;
+        avg = sum / recv_num;
+        drop = (int)((s->max_times - recv_num) * 100) / s->max_times;
+        log_info("%d send:%d, recv:%d, drop:%d%%, avg:%d",  s->tag, s->max_times, recv_num, drop, avg);
     }
 
-    push_message(s->id, ACTION_RESULT, s->type, s->tag, drop, avg);
+    push_result(s->id, ACTION_RESULT, s->type, s->tag, avg, s->max_times, recv_num, drop);
 
     push_action(s->id, ACTION_STOP, s->type, s->tag);
 
@@ -158,26 +152,29 @@ void *udp_echo_start(void *dat)
 {
     session_t *s = (session_t *)dat;
     char buf[2048];
+    int i = 0;
     socklen_t addr_len = sizeof(struct sockaddr_in);
     pthread_detach(pthread_self());
 
     pthread_create(&s->pid, NULL, udp_echo_recv, s);
 
-    while(s->num < s->max_times)
+    for(i = 0; i < s->max_times; i++)
     {
-        *(int *)buf = s->num++;
-        if(sendto(s->fd, &buf, s->pack_size, 0, (struct sockaddr *)&s->addr, addr_len) == -1)
+        *(int *)buf = i;
+        int size_idx = i % 128;
+        int pack_size =  s->pack_size[size_idx] - 20;
+        if(sendto(s->fd, &buf, pack_size, 0, (struct sockaddr *)&s->addr, addr_len) == -1)
         {
             log_error("udp send to:%s, fd:%d, size:%d, error:%s",
-                      s->addr_str, s->fd, s->pack_size, strerror(errno));
+                      s->addr_str, s->fd, s->pack_size[size_idx], strerror(errno));
             close(s->fd);
             return NULL;
         }
 
-        gettimeofday(&s->time_list[s->num - 1].b, NULL);
+        gettimeofday(&s->time_list[i].b, NULL);
         s->send_idx++;
         usleep(s->interval);
-        log_info("send tag:%d, idx:%d\n", s->tag, s->num - 1);
+        log_info("send tag:%d, idx:%d, size:%d\n", s->tag, i, s->pack_size[size_idx]);
     }
 
     return NULL;

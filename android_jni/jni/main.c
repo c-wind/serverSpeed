@@ -9,12 +9,13 @@
 
 #include "main.h"
 #include "message_list.h"
+#include "report.h"
 
 #define CHECK_WAIT_TIMEOUT 1
 
-void calljava_checkDetail(int id, int tm, int type, int tag, int result);
+void calljava_checkDetail(int id, int tm, int type, int tag, int result, int size);
 void calljava_checkStop();
-void calljava_checkResult(int tm, int type, int tag, int t, int result);
+void calljava_checkResult(int tm, int id, int type, int tag, int avg, int send, int recv, int drop);
 
 int __g_log_level = MRT_DEBUG;
 
@@ -23,12 +24,31 @@ session_t s1;
 session_t s2;
 pthread_t pid1;
 pthread_t pid2;
+int default_size[128];
 
 
-int pthread_start(char *addr1, char *addr2, int type, int pack_len, int times, int timeout, int timer)
+void default_size_random()
+{
+    int i =0;
+    struct timeval tv;
+
+    for (i=0; i<128; i++)
+    {
+        gettimeofday(&tv, NULL);
+        default_size[i] = (tv.tv_usec  * i % 1400) + 64;
+        log_info("size[%d]:%d", i, default_size[i]);
+    }
+}
+
+
+
+int pthread_start(char *addr1, char *addr2, int bin_type, int pack_len, int times, int timeout, int timer)
 {
     int (*init)(session_t *, char *, int, int, int, int, int) = NULL;
     void *(*start)(void *) = NULL;
+    int type = bin_type & 3;
+
+    default_size_random();
 
     switch (type)
     {
@@ -52,9 +72,17 @@ int pthread_start(char *addr1, char *addr2, int type, int pack_len, int times, i
         return -1;
     }
 
+    if (report_open(bin_type, addr1, addr2) == -1)
+    {
+        log_error("report file open error");
+        return -1;
+    }
+
+
     if (addr1  && *addr1)
     {
-        init(&s1, addr1, timeout, pack_len, times, 1, timer);
+        init(&s1, addr1, timeout, times, 1, timer, bin_type);
+        memcpy(s1.pack_size, default_size, sizeof(default_size));
         if (pthread_create(&pid1, NULL, start, &s1))
         {
             log_error("pthread_create error:%s", strerror(errno));
@@ -65,7 +93,8 @@ int pthread_start(char *addr1, char *addr2, int type, int pack_len, int times, i
 
     if (addr2  && *addr2)
     {
-        init(&s2, addr2, timeout, pack_len, times, 2, timer);
+        init(&s2, addr2, timeout, times, 2, timer, bin_type);
+        memcpy(s2.pack_size, default_size, sizeof(default_size));
         if (pthread_create(&pid2, NULL, start, &s2))
         {
             log_error("pthread_create error:%s", strerror(errno));
@@ -128,27 +157,48 @@ void JNI_FUNC(DumpMessage)(JNIEnv *e, jclass jc)
         switch (jm.what)
         {
         case ACTION_DETAIL:
-            calljava_checkDetail(jm.id, jm.tm, jm.type, jm.tag, jm.value);
+            report_detail(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1);
+            calljava_checkDetail(jm.id, jm.tm, jm.type, jm.tag, jm.value, jm.arg1);
             break;
         case ACTION_RESULT:
-            log_info("check result, drop:%d, avg:%d", jm.value, jm.arg1);
-            calljava_checkResult(jm.tm, jm.type, jm.tag, jm.value, jm.arg1);
+            report_result(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3);
+            calljava_checkResult(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3);
             break;
         case ACTION_STOP:
-            stat &= !jm.tag;
-            log_info("tag:%d, exit", jm.tag);
+            stat &= ~jm.tag;
+            log_info("stat:%d, tag:%d, exit", stat, jm.tag);
             if (stat == 0)
             {
                 calljava_checkStop();
+                report_close();
             }
             break;
         }
     }
 }
 
-void JNI_FUNC(checkInit)(JNIEnv *e, jclass jc)
+int JNI_FUNC(checkInit)(JNIEnv *e, jclass jc, jbyteArray path_array)
 {
+    __env = e;
+    __class = jc;
+
     message_list_init();
+
+    char *path = jbyteArray2char(path_array);
+    if (!path || !*path)
+    {
+        log_error("path is null");
+        return -1;
+    }
+
+    if (report_init(path) == -1)
+    {
+        log_error("report init error");
+        return -1;
+    }
+
+
+    return 0;
 }
 
 int JNI_FUNC(checkStop)(JNIEnv *e, jclass jc)
@@ -167,7 +217,8 @@ int JNI_FUNC(checkStart)(JNIEnv *e, jclass jc, jbyteArray addr_array1, jbyteArra
 
     if (pthread_start(addr1, addr2, type, pack_len, times, timeout, max_time) == -1)
     {
-        printf("pthread_start error\n");
+        log_error("pthread_start error");
+        calljava_checkStop();
         return -1;
     }
     //TODO：要删除
@@ -199,19 +250,19 @@ void calljava_checkStop()
 #endif
 }
 
-void calljava_checkResult(int tm, int type, int tag, int report_type, int result)
+void calljava_checkResult(int tm, int id, int type, int tag, int avg, int send, int recv, int drop)
 {
 #ifdef BUILD_JNI
     jmethodID method;
 
-    method = (*__env)->GetStaticMethodID(__env, __class, "checkResult", "(IIIII)V");
+    method = (*__env)->GetStaticMethodID(__env, __class, "checkResult", "(IIIIIII)V");
     if (method == NULL)
     {
         log_error("checkResult is NULL!");
         return;
     }
 
-    (*__env)->CallStaticIntMethod(__env, __class, method, tm, type, tag, report_type, result);
+    (*__env)->CallStaticIntMethod(__env, __class, method, tm, type, tag, avg, send, recv, drop);
     if((*__env)->ExceptionCheck(__env))
     {
         (*__env)->ExceptionClear(__env);//清除异常
@@ -222,19 +273,19 @@ void calljava_checkResult(int tm, int type, int tag, int report_type, int result
 
 
 
-void calljava_checkDetail(int id, int tm, int type, int tag, int result)
+void calljava_checkDetail(int id, int tm, int type, int tag, int result, int size)
 {
 #ifdef BUILD_JNI
     jmethodID method;
 
-    method = (*__env)->GetStaticMethodID(__env, __class, "checkDetail", "(IIIII)V");
+    method = (*__env)->GetStaticMethodID(__env, __class, "checkDetail", "(IIIIII)V");
     if (method == NULL)
     {
         log_error("checkDetail is NULL!");
         return;
     }
 
-    (*__env)->CallStaticIntMethod(__env, __class, method, id, tm, type, tag, result);
+    (*__env)->CallStaticIntMethod(__env, __class, method, id, tm, type, tag, result, size);
     if((*__env)->ExceptionCheck(__env))
     {
         (*__env)->ExceptionClear(__env);//清除异常
