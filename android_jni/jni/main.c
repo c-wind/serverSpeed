@@ -6,6 +6,8 @@
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include "main.h"
 #include "message_list.h"
@@ -15,7 +17,7 @@
 
 void calljava_checkDetail(int id, int tm, int type, int tag, int result, int size);
 void calljava_checkStop();
-void calljava_checkResult(int tm, int id, int type, int tag, int avg, int send, int recv, int drop);
+void calljava_checkResult(int tm, int id, int type, int tag, int avg, int send, int recv, int drop, int pack_len);
 
 int __g_log_level = MRT_DEBUG;
 
@@ -27,16 +29,20 @@ pthread_t pid2;
 int default_size[128];
 
 
-void default_size_random()
+void default_size_random(int pack_len)
 {
     int i =0;
     struct timeval tv;
 
     for (i=0; i<128; i++)
     {
+        if (pack_len != -1)
+        {
+            default_size[i] = pack_len;
+            continue;
+        }
         gettimeofday(&tv, NULL);
         default_size[i] = (tv.tv_usec  * i % 1400) + 64;
-        log_info("size[%d]:%d", i, default_size[i]);
     }
 }
 
@@ -44,11 +50,11 @@ void default_size_random()
 
 int pthread_start(char *addr1, char *addr2, int bin_type, int pack_len, int times, int timeout, int timer)
 {
-    int (*init)(session_t *, char *, int, int, int, int, int) = NULL;
+    int (*init)(session_t *, char *, int, int, int, int, int, int) = NULL;
     void *(*start)(void *) = NULL;
     int type = bin_type & 3;
 
-    default_size_random();
+    default_size_random(pack_len);
 
     switch (type)
     {
@@ -81,7 +87,7 @@ int pthread_start(char *addr1, char *addr2, int bin_type, int pack_len, int time
 
     if (addr1  && *addr1)
     {
-        init(&s1, addr1, timeout, times, 1, timer, bin_type);
+        init(&s1, addr1, timeout, times, 1, timer, bin_type, pack_len);
         memcpy(s1.pack_size, default_size, sizeof(default_size));
         if (pthread_create(&pid1, NULL, start, &s1))
         {
@@ -93,7 +99,7 @@ int pthread_start(char *addr1, char *addr2, int bin_type, int pack_len, int time
 
     if (addr2  && *addr2)
     {
-        init(&s2, addr2, timeout, times, 2, timer, bin_type);
+        init(&s2, addr2, timeout, times, 2, timer, bin_type, pack_len);
         memcpy(s2.pack_size, default_size, sizeof(default_size));
         if (pthread_create(&pid2, NULL, start, &s2))
         {
@@ -161,26 +167,40 @@ void JNI_FUNC(DumpMessage)(JNIEnv *e, jclass jc)
             calljava_checkDetail(jm.id, jm.tm, jm.type, jm.tag, jm.value, jm.arg1);
             break;
         case ACTION_RESULT:
-            report_result(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3);
-            calljava_checkResult(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3);
+            report_result(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3, jm.arg4);
+            calljava_checkResult(jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3, jm.arg4);
             break;
         case ACTION_STOP:
             stat &= ~jm.tag;
-            log_info("stat:%d, tag:%d, exit", stat, jm.tag);
             if (stat == 0)
             {
                 calljava_checkStop();
                 report_close();
+                log_info("task over");
             }
             break;
         }
     }
 }
 
+
+int set_max_file() {
+    struct rlimit limit;
+    getrlimit(RLIMIT_NOFILE, &limit);
+    limit.rlim_cur = limit.rlim_max;
+    if(setrlimit(RLIMIT_NOFILE, &limit) == -1) {
+        log_warning("setrlimit error, max open file:%ld", limit.rlim_cur);
+    }
+    getrlimit(RLIMIT_NOFILE, &limit);
+    return limit.rlim_cur;
+}
+
 int JNI_FUNC(checkInit)(JNIEnv *e, jclass jc, jbyteArray path_array)
 {
     __env = e;
     __class = jc;
+
+    set_max_file();
 
     message_list_init();
 
@@ -221,8 +241,6 @@ int JNI_FUNC(checkStart)(JNIEnv *e, jclass jc, jbyteArray addr_array1, jbyteArra
         calljava_checkStop();
         return -1;
     }
-    //TODO：要删除
-    log_info("addr1:%s, addr2:%s, type:%d, packLen:%d, times:%d, timeout:%d, timer:%d", addr1, addr2, type, pack_len, times, timeout, max_time);
 
     return 0;
 }
@@ -250,19 +268,19 @@ void calljava_checkStop()
 #endif
 }
 
-void calljava_checkResult(int tm, int id, int type, int tag, int avg, int send, int recv, int drop)
+void calljava_checkResult(int tm, int id, int type, int tag, int avg, int send, int recv, int drop, int pack_len)
 {
 #ifdef BUILD_JNI
     jmethodID method;
 
-    method = (*__env)->GetStaticMethodID(__env, __class, "checkResult", "(IIIIIII)V");
+    method = (*__env)->GetStaticMethodID(__env, __class, "checkResult", "(IIIIIIII)V");
     if (method == NULL)
     {
         log_error("checkResult is NULL!");
         return;
     }
 
-    (*__env)->CallStaticIntMethod(__env, __class, method, tm, type, tag, avg, send, recv, drop);
+    (*__env)->CallStaticIntMethod(__env, __class, method, tm, type, tag, avg, send, recv, drop, pack_len);
     if((*__env)->ExceptionCheck(__env))
     {
         (*__env)->ExceptionClear(__env);//清除异常
@@ -308,7 +326,8 @@ void dump_message()
             printf("detail id:%d type:%d tag:%d delay:%d\n", jm.id, jm.type, jm.tag, jm.value);
             break;
         case ACTION_RESULT:
-            printf("result %d, %d, %d, drop:%d, delay:%d\n", jm.tm, jm.type, jm.tag, jm.value, jm.arg1);
+            printf("result tm:%d, id:%d, type:%d, tag:%d, avg:%d, send:%d, recv:%d, drop:%d\n",
+                   jm.tm, jm.id, jm.type, jm.tag, jm.value, jm.arg1, jm.arg2, jm.arg3, jm.arg4);
             break;
         case ACTION_STOP:
             printf("stop\n");
@@ -322,18 +341,17 @@ int main(int argc, char *argv[])
 {
     if (argc != 5)
     {
-        printf("%s addrA addrB pack_len times timeout\n", argv[0]);
+        printf("%s addr pack_len times timeout\n", argv[0]);
         return -1;
     }
     message_list_init();
 
-    char *addrA = argv[1];
-    char *addrB = argv[2];
-    int pack_len = atoi(argv[3]);
-    int times = atoi(argv[4]);
-    int timeout = atoi(argv[5]);
+    char *addr = argv[1];
+    int pack_len = atoi(argv[2]);
+    int times = atoi(argv[3]);
+    int timeout = atoi(argv[4]);
 
-    if (pthread_start(addrA, addrB, CHECK_TYPE_UDP_ECHO, pack_len, times, timeout, 10) == -1)
+    if (pthread_start(addr, NULL, CHECK_TYPE_TCP_CONN, pack_len, times, 10, timeout) == -1)
     {
         printf("pthread_start error\n");
         return -1;

@@ -29,7 +29,7 @@ void push_detail(int id, int type, int tag, int val, int arg1)
     push_message(id, ACTION_DETAIL, type, tag, val, arg1);
 }
 
-void push_result(int id, int what, int type, int tag, int value, int arg1, int arg2, int arg3)
+void push_result(int id, int what, int type, int tag, int value, int arg1, int arg2, int arg3, int arg4)
 {
     pthread_mutex_lock(&this.mtx);
     if (this.size == this.total)
@@ -48,6 +48,7 @@ void push_result(int id, int what, int type, int tag, int value, int arg1, int a
     this.list[this.wpos].arg1 = arg1;
     this.list[this.wpos].arg2 = arg2;
     this.list[this.wpos].arg3 = arg3;
+    this.list[this.wpos].arg4 = arg4;
     this.size++;
     pthread_mutex_unlock(&this.mtx);
 }
@@ -58,7 +59,7 @@ void push_message(int id, int what, int type, int tag, int value, int arg1)
     pthread_mutex_lock(&this.mtx);
     if (this.size == this.total)
     {
-        log_fatal("msg list full.");
+        log_fatal("msg list full, size:%d, total:%d", this.size, this.total);
         pthread_mutex_unlock(&this.mtx);
         return;
     }

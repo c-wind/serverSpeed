@@ -161,14 +161,20 @@ typedef struct {
     int     max_times;
     int     recv_idx;
     int     pack_size[128];
+    int     pack_len;
+
+    int     del_idx;
+    int     send_idx;
+
+    int     end_time;
 
     char    addr_str[64];
     struct sockaddr_in addr;
 
-    int     send_idx;
-    int     del_idx;
     used_time_t time_list[60000];
     pthread_t pid;
+
+    int     over;
 
 }session_t;
 
@@ -196,14 +202,16 @@ typedef struct {
 }pthread_data_t;
 
 
-int udp_echo_init(session_t *s, char *ip, int timeout,  int times, int tag, int timer, int);
+int udp_echo_init(session_t *s, char *ip, int timeout,  int times, int tag, int timer, int, int);
 void *udp_echo_start(void *dat);
 
-int tcp_conn_init(session_t *s, char *ip, int timeout,  int times, int tag, int timer, int);
+int tcp_conn_init(session_t *s, char *ip, int timeout,  int times, int tag, int timer, int, int);
 void *tcp_conn_start(void *dat);
 
-int tcp_echo_init(session_t *s, char *ip, int timeout,  int times, int tag, int timer, int);
+int tcp_echo_init(session_t *s, char *ip, int timeout,  int times, int tag, int timer, int, int);
 void *tcp_echo_start(void *dat);
+
+void log_write(char *msg);
 
 #define JNI_FUNC(f) Java_jni_VPNJni_##f
 

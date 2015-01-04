@@ -12,7 +12,7 @@
 
 int id_idx = 0;
 
-int udp_echo_init(session_t *s, char *ip, int timeout, int times, int tag, int timer, int type)
+int udp_echo_init(session_t *s, char *ip, int timeout, int times, int tag, int timer, int type, int pack_len)
 {
     memset(s, 0, sizeof(*s));
 
@@ -24,6 +24,7 @@ int udp_echo_init(session_t *s, char *ip, int timeout, int times, int tag, int t
         return -1;
     }
 
+    s->pack_len = pack_len;
     s->type = type;
     s->ip = ip;
     s->port = DEFAULT_PORT;
@@ -36,6 +37,7 @@ int udp_echo_init(session_t *s, char *ip, int timeout, int times, int tag, int t
     s->timeout = timeout;
     s->max_times = timer * times;
     s->interval = 1000000 / times;
+    s->end_time = time(NULL) + timer;
 
     log_info("%d udp interval:%d, max_times:%d, timeout:%d", s->tag, s->interval, s->max_times, s->timeout);
 
@@ -54,26 +56,33 @@ void *udp_echo_recv(void *dat)
 
     pthread_detach(pthread_self());
 
-    while(s->recv_idx < s->max_times)
+    while(s->recv_idx < s->max_times && time(NULL) < s->end_time + 6)
     {
+        if (s->fd == -1)
+        {
+            log_error("%d socket fd:%d", s->tag, s->fd);
+            usleep(s->interval);
+            continue;
+        }
+
         setsockopt(s->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(struct timeval));
         ret = recvfrom(s->fd, data, sizeof(data), 0, (struct sockaddr *)&s->addr, &addr_len);
         if (ret == -1)
         {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
             {
                 log_error("中断了，继续");
                 continue;
             }
 
-            if (errno != EAGAIN)
+            if(s->fd == -1)
             {
-                log_error("recv %s error:%d:%s", s->addr_str, errno, strerror(errno));
-                goto error_return;
+                log_error("wait socket, curr fd:%d", s->fd);
+                continue;
             }
+
         }
 
-        gettimeofday(&e, NULL);
 
         if (ret != -1)
         {
@@ -86,19 +95,25 @@ void *udp_echo_recv(void *dat)
 
             if (s->time_list[idx].stat != -1)
             {
+                gettimeofday(&e, NULL);
                 s->time_list[idx].e = e;
                 s->recv_idx++;
                 int d = INTERVAL(s->time_list[idx].e, s->time_list[idx].b);
                 if (d < 0)
                 {
-                    log_error("idx:%d, b.sec:%d usec:%d, e.sec:%d usec:%d", idx, (int)s->time_list[idx].b.tv_sec, (int)s->time_list[idx].b.tv_usec, (int)s->time_list[idx].e.tv_sec, (int)s->time_list[idx].e.tv_usec);
+                    char line[1024];
+                    sprintf(line, "idx:%d, b.sec:%d usec:%d, e.sec:%d usec:%d\n",
+                            idx, (int)s->time_list[idx].b.tv_sec, (int)s->time_list[idx].b.tv_usec, (int)s->time_list[idx].e.tv_sec, (int)s->time_list[idx].e.tv_usec);
+
+                    log_write(line);
                 }
                 s->time_list[idx].stat = d;
-                push_detail(s->id, s->type, s->tag, d, ret);
+                push_detail(s->id, s->type, s->tag, d, ret + 20);
                 log_debug("id:%d, type:%d, tag:%d, delay:%d", s->id, s->type, s->tag, d);
             }
         }
 
+        gettimeofday(&e, NULL);
         while((s->send_idx > s->del_idx) && (s->time_list[s->del_idx].b.tv_sec < (e.tv_sec - s->timeout)))
         {
             if (s->time_list[s->del_idx].stat > 0)
@@ -129,7 +144,6 @@ void *udp_echo_recv(void *dat)
 
     if (recv_num == 0)
     {
-error_return:
         avg = -1;
         drop = 100;
         log_info("%d drop:%d, avg:%d",  s->tag, drop, avg);
@@ -139,9 +153,11 @@ error_return:
         log_info("%d send:%d, recv:%d, drop:%d%%, avg:%d",  s->tag, s->max_times, recv_num, drop, avg);
     }
 
-    push_result(s->id, ACTION_RESULT, s->type, s->tag, avg, s->max_times, recv_num, drop);
+    push_result(s->id, ACTION_RESULT, s->type, s->tag, avg, s->max_times, recv_num, drop, s->pack_len);
 
     push_action(s->id, ACTION_STOP, s->type, s->tag);
+
+    close(s->fd);
 
     return NULL;
 }
@@ -158,24 +174,51 @@ void *udp_echo_start(void *dat)
 
     pthread_create(&s->pid, NULL, udp_echo_recv, s);
 
-    for(i = 0; i < s->max_times; i++)
+
+    for(i = 0; i < s->max_times && time(NULL) < s->end_time; i++)
     {
         *(int *)buf = i;
         int size_idx = i % 128;
         int pack_size =  s->pack_size[size_idx] - 20;
-        if(sendto(s->fd, &buf, pack_size, 0, (struct sockaddr *)&s->addr, addr_len) == -1)
+        gettimeofday(&s->time_list[i].b, NULL);
+
+        if (s->fd == -1)
         {
-            log_error("udp send to:%s, fd:%d, size:%d, error:%s",
-                      s->addr_str, s->fd, s->pack_size[size_idx], strerror(errno));
-            close(s->fd);
-            return NULL;
+            int nfd = socket(AF_INET, SOCK_DGRAM, 0);
+            if (nfd == -1) {
+                log_error("socket error:%s\n", strerror(errno));
+                push_detail(s->id, s->type, s->tag, -1, pack_size + 20);
+                usleep(s->interval);
+                continue;
+            }
+            s->fd = nfd;
+            log_info("new fd:%d", s->fd);
         }
 
-        gettimeofday(&s->time_list[i].b, NULL);
+        if(sendto(s->fd, &buf, pack_size, 0, (struct sockaddr *)&s->addr, addr_len) == -1)
+        {
+            if (errno == EINTR)
+            {
+                log_error("中断了，继续");
+                continue;
+            }
+
+            log_error("%d idx:%d fd:%d sendto error:%s", s->tag, i, s->fd, strerror(errno));
+            close(s->fd);
+            s->fd = -1;
+            usleep(s->interval);
+            push_detail(s->id, s->type, s->tag, -1, pack_size + 20);
+            continue;
+        }
+        log_info("send line:%d", __LINE__);
+
         s->send_idx++;
         usleep(s->interval);
         log_info("send tag:%d, idx:%d, size:%d\n", s->tag, i, s->pack_size[size_idx]);
     }
+
+    log_info("send over i:%d, max:%d", i, s->max_times);
+    s->max_times = i;
 
     return NULL;
 }

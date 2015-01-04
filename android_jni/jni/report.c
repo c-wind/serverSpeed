@@ -16,20 +16,19 @@
 
 FILE *fp = NULL;
 FILE *result_fp = NULL;
+FILE *log_fp = NULL;
 char file_name[MAX_FILE_PATH];
 char sd_path[MAX_FILE_PATH];
 
-int file_path_init(char *sd_path)
+void file_path_init(char *sd_path)
 {
     char tmp_path[MAX_LINE];
     sprintf(tmp_path, "%s/server_speed", sd_path);
+
     if (mkdir(tmp_path, 0777) == -1)
     {
-        log_error("mkdir path:%s error:%s", tmp_path, strerror(errno));
-        return -1;
+        log_info("mkdir path:%s error:%s", tmp_path, strerror(errno));
     }
-
-    return 0;
 }
 
 int report_init(char *path)
@@ -49,7 +48,20 @@ int report_init(char *path)
         return -1;
     }
 
+    sprintf(file, "%s/server_speed/log", path);
+    log_fp = fopen(file, "a");
+    if (!log_fp)
+    {
+        log_error("open %s error:%s", file, strerror(errno));
+        return -1;
+    }
+
     return 0;
+}
+
+void log_write(char *msg)
+{
+    fprintf(log_fp, "%s", msg);
 }
 
 
@@ -79,15 +91,20 @@ int report_open(int bin_type, char *addr1, char *addr2)
 
 void report_detail(int tm, int id, int type, int tag, int delay, int size)
 {
-    fprintf(fp, "D %d %d %d %d %d %d\n", tm, id, type, tag, delay, size);
+    if (!fp)
+        fprintf(fp, "D %d %d %d %d %d %d\n", tm, id, type, tag, delay, size);
 }
 
 
-void report_result(int tm, int id, int type, int tag, int delay, int send, int recv, int drop)
+void report_result(int tm, int id, int type, int tag, int delay, int send, int recv, int drop, int pack_len)
 {
-    fprintf(result_fp, "%d %d %d %d %d %d %d %d\n", tm, id, type, tag, delay, send, recv, drop);
+    if (!result_fp)
+        return;
+    fprintf(result_fp, "%d %d %d %d %d %d %d %d %d\n", tm, id, type, tag, delay, send, recv, drop, pack_len);
     fflush(result_fp);
-    fprintf(fp, "R %d %d %d %d %d %d %d %d\n", tm, id, type, tag, delay, send, recv, drop);
+    if (!fp)
+        return;
+    fprintf(fp, "R %d %d %d %d %d %d %d %d %d\n", tm, id, type, tag, delay, send, recv, drop, pack_len);
 }
 
 int report_close()
@@ -95,8 +112,11 @@ int report_close()
     char new_file[MAX_LINE];
     snprintf(new_file, strlen(file_name) - 3, "%s", file_name);
 
-    fclose(fp);
-    fp = NULL;
+    if (fp)
+    {
+        fclose(fp);
+        fp = NULL;
+    }
 
     if (rename(file_name, new_file) == -1)
     {
