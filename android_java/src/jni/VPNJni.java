@@ -1,6 +1,5 @@
 package jni;
 
-
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -18,6 +17,8 @@ public class VPNJni {
 
 	public static List<String> msgList = new ArrayList<>();
 
+	public static String sd_path = "";
+
 	public static Handler handle;
 	public final static int ACTION_DETAIL = 0;
 	public final static int ACTION_RESULT = 1;
@@ -34,26 +35,79 @@ public class VPNJni {
 
 	static SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss");
 
-	static String getTypeString(int t) {
-		switch (t) {
-		case CHECK_TYPE_UDP_ECHO:
-			return "UDP";
-		case CHECK_TYPE_TCP_CONN:
-			return "Conn";
-		case CHECK_TYPE_TCP_ECHO:
-			return "Echo";
+	public static String getTypeString(int t) {
+		String tp = "";
+		int type = t & 3;
+		boolean isQos = (t & 4) == 4;
+		boolean isStrong = (t & 16) == 16;
+
+		System.out.println("t:" + t + " isQos:" + isQos + " isStrong:"
+				+ isStrong);
+
+		if (isQos) {
+			tp = "Qos";
 		}
-		return "UnDef";
+
+		if (isStrong) {
+			tp += " 强";
+		} else {
+			tp += " 弱";
+		}
+
+		switch (type) {
+		case CHECK_TYPE_UDP_ECHO:
+			tp += " UDP";
+			break;
+		case CHECK_TYPE_TCP_CONN:
+			tp += " Conn";
+			break;
+		case CHECK_TYPE_TCP_ECHO:
+			tp += " Echo";
+			break;
+		}
+
+		return tp;
 	}
 
-	static String getDestString(int t) {
+	public static String getTypeStringExt(int t) {
+		String tp = "";
+		int type = t & 3;
+		boolean isQos = (t & 4) == 4;
+		boolean isStrong = (t & 16) == 16;
+
+		if (isQos) {
+			tp = "使用Qos";
+		}
+
+		if (isStrong) {
+			tp += " 信号强";
+		} else {
+			tp += " 信号弱";
+		}
+
+		switch (type) {
+		case CHECK_TYPE_UDP_ECHO:
+			tp += " UDP";
+			break;
+		case CHECK_TYPE_TCP_CONN:
+			tp += " Conn";
+			break;
+		case CHECK_TYPE_TCP_ECHO:
+			tp += " Echo";
+			break;
+		}
+
+		return tp;
+	}
+
+	public static String getDestString(int t) {
 		if (t == 1)
 			return "节点A";
 		return "节点B";
 	}
 
-	public static native int checkStart(byte[] srcAddr, byte[] qosAddr, int type, int packLen, int times, int timeout,
-			int max_time);
+	public static native int checkStart(byte[] addrA, byte[] addrB, int type,
+			int packLen, int times, int timeout, int max_time);
 
 	public static native void DumpMessage();
 
@@ -61,7 +115,7 @@ public class VPNJni {
 		DumpMessage();
 	}
 
-	public static native void checkInit();
+	public static native int checkInit(byte[] path);
 
 	public static void checkStop() {
 		Message msg = new Message();
@@ -70,30 +124,79 @@ public class VPNJni {
 		handle.sendMessage(msg);
 	}
 
-	public static void checkDetail(int id, int tm, int type, int tag, int result) {
-		String upStr = String.format("%d %d %s %s %d\n", id, tm, getDestString(tag), getTypeString(type), result);
-		DataManager.getInstance().saveDetail(upStr);
-		if (msgList.size() > 30) {
-			msgList.remove(0);
+	public static String GetResultTypeStr(int size) {
+		String str = "";
+		switch (size) {
+		case -1:
+			str = "超时";
+			break;
+		case -2:
+			str = "网络异常";
+			break;
 		}
-		msgList.add(String.format("%s %s %s %d\n", df.format(new Date(tm * 1000L)), getDestString(tag),
-				getTypeString(type), result));
 
+		return str;
+	}
+
+	public static String GetResultStr(int size) {
+		String str = "";
+		switch (size) {
+		case -1:
+			str = "超时";
+			break;
+		case -2:
+			str = "网络异常";
+			break;
+		default:
+			str = String.format("%d毫秒", size);
+			break;
+		}
+
+		return str;
+	}
+
+	public static void checkDetail(int id, int tm, int binType, int tag,
+			int result, int size) {
 		Message msg = new Message();
+		int type = binType & 3;
 		msg.what = ACTION_DETAIL;
-		msg.obj = (Object) String.format("%s %s %s %d\n", df.format(new Date(tm * 1000L)), getDestString(tag),
-				getTypeString(type), result);
+		System.out.println("result:" + result);
+		if (type == 2) {
+			msg.obj = (Object) String.format("%s %s %s %s\n",
+					df.format(new Date(tm * 1000L)), getDestString(tag),
+					getTypeString(type), GetResultStr(result));
+		} else {
+			msg.obj = (Object) String.format("%s %s %s %s %d字节\n",
+					df.format(new Date(tm * 1000L)), getDestString(tag),
+					getTypeString(type), GetResultStr(result), size);
+		}
 		handle.sendMessage(msg);
 	}
 
-	public static void checkResult(int tm, int type, int tag, int drop, int delay) {
+	public static String GetPackSizeStr(int size) {
+		if (size == -1) {
+			return "随机长度";
+		}
+		return String.format("%s字节", size);
+	}
+
+	public static void checkResult(int tm, int binType, int tag, int delay,
+			int send, int recv, int drop, int pack_len) {
 		Message msg = new Message();
 		msg.what = ACTION_RESULT;
+		int type = binType;
+		String line = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ";
+
 		if (type == CHECK_TYPE_TCP_ECHO) {
-			msg.obj = (Object) String.format("%s %s 延迟:%d\n", getDestString(tag), getTypeString(type), delay);
+			msg.obj = (Object) String.format(
+					"%s %s %s\n　　　发送:%d 接收:%d 中断连接:%d%% 延迟:%d\n%s\n",
+					getDestString(tag), getTypeStringExt(type),
+					GetPackSizeStr(pack_len), send, recv, drop, delay, line);
 		} else {
-			msg.obj = (Object) String.format("%s %s 失败:%d%% 延迟:%d\n", getDestString(tag), getTypeString(type), drop,
-					delay);
+			msg.obj = (Object) String.format(
+					"%s %s %s\n　　　发送:%d 接收:%d 失败:%d%% 延迟:%d\n%s\n",
+					getDestString(tag), getTypeStringExt(type),
+					GetPackSizeStr(pack_len), send, recv, drop, delay, line);
 		}
 		handle.sendMessage(msg);
 		System.out.println("send result msg");

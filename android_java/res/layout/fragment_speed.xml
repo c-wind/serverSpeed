@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="fill_parent"
+    android:layout_height="wrap_content" >
+
+    <LinearLayout
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="5dp"
+        android:paddingRight="5dp" >
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" >
+
+            <TextView
+                android:id="@+id/textViewServerA"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/server_a" />
+
+            <EditText
+                android:id="@+id/editTextServerA"
+                android:layout_width="200dp"
+                android:layout_height="35dp"
+                android:ems="10"
+                android:hint="@string/server_a_ip"
+                android:textSize="14sp" />
+
+            <CheckBox
+                android:id="@+id/checkBoxA"
+                android:layout_width="30dp"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" >
+
+            <TextView
+                android:id="@+id/textViewServerB"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/server_b" />
+
+            <EditText
+                android:id="@+id/editTextServerB"
+                android:layout_width="200dp"
+                android:layout_height="35dp"
+                android:ems="10"
+                android:hint="@string/server_b_ip"
+                android:textSize="14sp" />
+
+            <CheckBox
+                android:id="@+id/checkBoxB"
+                android:layout_width="30dp"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" >
+
+            <TextView
+                android:id="@+id/textViewPackLen"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/pack_len" />
+
+            <EditText
+                android:id="@+id/editTextPackLen"
+                android:layout_width="100dp"
+                android:layout_height="35dp"
+                android:ems="10"
+                android:hint="@string/pack_len_default"
+                android:inputType="number"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/textViewSpeed"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/speed" />
+
+            <EditText
+                android:id="@+id/editTextSpeed"
+                android:layout_width="100dp"
+                android:layout_height="35dp"
+                android:ems="10"
+                android:hint="@string/speed_default"
+                android:inputType="number"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" >
+
+            <TextView
+                android:id="@+id/textViewTimeout"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/timeout" />
+
+            <EditText
+                android:id="@+id/editTextTimeout"
+                android:layout_width="100dp"
+                android:layout_height="35dp"
+                android:ems="10"
+                android:hint="@string/timeout_default"
+                android:inputType="number"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/TextViewTimver"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/timer" />
+
+            <EditText
+                android:id="@+id/EditTextTimer"
+                android:layout_width="100dp"
+                android:layout_height="35dp"
+                android:ems="10"
+                android:hint="@string/timer_default"
+                android:inputType="number"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <RadioGroup
+            android:id="@+id/radioGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" >
+
+            <RadioButton
+                android:id="@+id/radioUdpEcho"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="@string/udp" >
+            </RadioButton>
+
+            <RadioButton
+                android:id="@+id/radioTcpConn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tcp_conn" >
+            </RadioButton>
+
+            <RadioButton
+                android:id="@+id/radioTcpEcho"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tcp_echo" >
+            </RadioButton>
+        </RadioGroup>
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" >
+
+            <TextView
+                android:id="@+id/textViewLog"
+                android:layout_width="wrap_content"
+                android:layout_height="35dp"
+                android:gravity="center"
+                android:text="@string/current_network" />
+
+            <CheckBox
+                android:id="@+id/isQos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="false"
+                android:text="Qos" >
+            </CheckBox>
+
+            <CheckBox
+                android:id="@+id/isStrong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="false"
+                android:text="信号强" >
+            </CheckBox>
+
+            <Button
+                android:id="@+id/buttonStart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="right"
+                android:text="@string/buttonStart" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" >
+
+            <TextView
+                android:id="@+id/textViewResult"
+                android:layout_width="match_parent"
+                android:layout_height="30dp"
+                android:gravity="center|left"
+                android:text="@string/result" />
+
+            <TextView
+                android:id="@+id/textViewResultBody"
+                android:layout_width="match_parent"
+                android:layout_height="90dp"
+                android:background="@drawable/box_border"
+                android:gravity="left|top"
+                android:singleLine="false"
+                android:text="@string/textNil" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" >
+
+            <TextView
+                android:id="@+id/textViewDetail"
+                android:layout_width="fill_parent"
+                android:layout_height="30dp"
+                android:gravity="center|left"
+                android:text="@string/resultDetail" />
+
+            <TextView
+                android:id="@+id/textViewDetailBody"
+                android:layout_width="fill_parent"
+                android:layout_height="195dp"
+                android:background="@drawable/box_border"
+                android:gravity="left|top"
+                android:singleLine="false"
+                android:text="@string/textNil" />
+        </LinearLayout>
+    </LinearLayout>
+
+</ScrollView>

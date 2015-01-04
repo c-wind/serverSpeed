@@ -4,9 +4,9 @@ import jni.VPNJni;
 
 import org.codecn.speed.R;
 
-import pthread.DataManager;
 import pthread.VPNManager;
 import android.app.Fragment;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -14,6 +14,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -30,15 +31,15 @@ public class MainFragment extends Fragment {
 	private EditText max_time;
 	private CheckBox checkA;
 	private CheckBox checkB;
+	private CheckBox checkIsQos;
+	private CheckBox checkIsStrong;
 	private TextView resultTextView;
 	private TextView detailTextView;
 	private static Button btn;
-	private static Button btnUpload;
 	private RadioGroup rg;
 	private int selectType = VPNJni.CHECK_TYPE_UDP_ECHO;
-	private int detailLines = 0;
 	public Handler handle;
-
+	
 	public void cleanResult() {
 		resultTextView.setText("");
 	}
@@ -48,12 +49,15 @@ public class MainFragment extends Fragment {
 	}
 
 	public void showDetail(String msg) {
-		if (detailLines++ > 10) {
-			String body = detailTextView.getText().toString();
-			detailTextView.setText(body.replaceFirst("(.*)\n?", ""));
-			detailLines = 11;
+		String body = detailTextView.getText().toString();
+		String[] kv = body.split("\n");
+
+		if (kv.length >= 10) {
+			int lastIdx  = body.lastIndexOf('\n');
+			lastIdx  = body.lastIndexOf('\n', lastIdx);
+			body = body.substring(0, lastIdx);
 		}
-		detailTextView.append(msg);
+		detailTextView.setText(msg + body);
 	}
 
 	private RadioGroup.OnCheckedChangeListener mChangeRadio = new RadioGroup.OnCheckedChangeListener() {
@@ -62,14 +66,17 @@ public class MainFragment extends Fragment {
 			switch (checkedId) {
 			case R.id.radioTcpConn:
 				selectType = VPNJni.CHECK_TYPE_TCP_CONN;
+				speed.setHint("1(次/秒)");
 				break;
 
 			case R.id.radioTcpEcho:
 				selectType = VPNJni.CHECK_TYPE_TCP_ECHO;
+				speed.setHint("20(包/秒)");
 				break;
 
 			case R.id.radioUdpEcho:
 				selectType = VPNJni.CHECK_TYPE_UDP_ECHO;
+				speed.setHint("20(包/秒)");
 				break;
 			}
 		}
@@ -77,9 +84,8 @@ public class MainFragment extends Fragment {
 
 	@Override
 	public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-		View rootView = inflater.inflate(R.layout.fragment_main, container, false);
+		View rootView = inflater.inflate(R.layout.fragment_speed, container, false);
 		btn = (Button) rootView.findViewById(R.id.buttonStart);
-		btnUpload = (Button) rootView.findViewById(R.id.buttonUpload);
 		serverA = (EditText) rootView.findViewById(R.id.editTextServerA);
 		serverB = (EditText) rootView.findViewById(R.id.editTextServerB);
 		speed = (EditText) rootView.findViewById(R.id.editTextSpeed);
@@ -88,6 +94,9 @@ public class MainFragment extends Fragment {
 		max_time = (EditText) rootView.findViewById(R.id.EditTextTimer);
 		checkA = (CheckBox) rootView.findViewById(R.id.checkBoxA);
 		checkB = (CheckBox) rootView.findViewById(R.id.checkBoxB);
+
+		checkIsQos = (CheckBox) rootView.findViewById(R.id.isQos);
+		checkIsStrong = (CheckBox) rootView.findViewById(R.id.isStrong);
 
 		rg = (RadioGroup) rootView.findViewById(R.id.radioGroup);
 		detailTextView = (TextView) rootView.findViewById(R.id.textViewDetailBody);
@@ -109,16 +118,6 @@ public class MainFragment extends Fragment {
 					btn.setEnabled(true);
 					btn.setText("开始测速");
 					break;
-				case VPNJni.ACTION_UPLOAD_SUCC:
-					btnUpload.setEnabled(true);
-					btnUpload.setText(R.string.buttonUpload);
-					showResult("上传结果成功\n");
-					break;
-				case VPNJni.ACTION_UPLOAD_FAIL:
-					btnUpload.setEnabled(true);
-					btnUpload.setText(R.string.buttonUpload);
-					showResult("上传结果失败了，，，\n");
-					break;
 				}
 
 				super.handleMessage(msg);
@@ -127,16 +126,6 @@ public class MainFragment extends Fragment {
 
 		VPNJni.handle = this.handle;
 
-		btnUpload.setOnClickListener(new OnClickListener() {
-
-			@Override
-			public void onClick(View v) {
-				DataManager.getInstance().uploadResult(handle);
-				btnUpload.setText("上传中...");
-				btnUpload.setEnabled(false);
-			}
-		});
-
 		btn.setOnClickListener(new OnClickListener() {
 
 			@Override
@@ -144,15 +133,30 @@ public class MainFragment extends Fragment {
 				String addrA = "";
 				String addrB = "";
 				int iTimes = 20;
-				int iPackLen = 64;
+				int iPackLen = -1;
 				int iTimeout = 5;
-				int iMaxTime = 60;
+				int iMaxTime = 120;
+				int typeBin = selectType;
+				
+				if (MainActivity.imm.isActive()) {
+					MainActivity.imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+				}
 
+				
+				
+				if (checkIsQos.isChecked()) {
+					typeBin |= 4;
+				}
+				
+				if (checkIsStrong.isChecked()) {
+					typeBin |= 16;
+				}
+				
 				if (checkA.isChecked()) {
 					if (serverA.getText().toString().length() > 5) {
 						addrA = serverA.getText().toString();
 					} else {
-						addrA = "122.224.73.165";
+						addrA = "221.228.82.107";
 					}
 				}
 
@@ -160,8 +164,7 @@ public class MainFragment extends Fragment {
 					if (serverB.getText().toString().length() > 5) {
 						addrB = serverB.getText().toString();
 					} else {
-						
-						addrB = "221.228.205.190";
+						addrB = "221.228.82.108";
 					}
 				}
 
@@ -172,41 +175,48 @@ public class MainFragment extends Fragment {
 
 				if (packLen.getText().toString().length() > 0) {
 					iPackLen = Integer.parseInt(packLen.getText().toString().trim());
+					if (iPackLen > 1500 || iPackLen < 64) {
+						Toast.makeText(MainActivity.defaultContext, "包长允许范围64~1500(字节)", Toast.LENGTH_SHORT).show();
+						System.out.println("len:" + iPackLen);
+						return;
+					}
 				}
 
-				if (iPackLen > 1500 || iPackLen < 64) {
-					Toast.makeText(MainActivity.defaultContext, "包长允许范围64~1500(字节)", Toast.LENGTH_SHORT).show();
-					return;
-				}
 
 				if (timeout.getText().toString().length() > 0) {
 					iTimeout = Integer.parseInt(timeout.getText().toString().trim());
 				}
 
-				if (iTimeout < 1 &&  iTimeout > 60) {
+				if (iTimeout < 1 ||  iTimeout > 60) {
 					Toast.makeText(MainActivity.defaultContext, "超时允许范围1~60(秒)", Toast.LENGTH_SHORT).show();
 					return;
+				}
+
+				if(selectType == 2) {
+					iTimes = 1;
 				}
 
 				if (speed.getText().toString().length() > 0) {
 					iTimes = Integer.parseInt(speed.getText().toString().trim());
 				}
 
-				if (iTimes > 20 && iTimes < 1) {
-					Toast.makeText(MainActivity.defaultContext, "速率允许范围1~20次(每秒/次)", Toast.LENGTH_SHORT).show();
+				if (iTimes > 100 || iTimes < 1) {
+					Toast.makeText(MainActivity.defaultContext, "速率允许范围1~100次(每秒/次)", Toast.LENGTH_SHORT).show();
 					return;
 				}
+				
+				
 
 				if (max_time.getText().toString().length() > 0) {
 					iMaxTime = Integer.parseInt(max_time.getText().toString().trim());
 				}
-
-				if (iMaxTime > 300 && iMaxTime < 5) {
-					Toast.makeText(MainActivity.defaultContext, "测速时长允许范围5~300次(秒)", Toast.LENGTH_SHORT).show();
+				
+				if (iMaxTime * iTimes > 60000 || iMaxTime < 5) {
+					Toast.makeText(MainActivity.defaultContext, "总发送数量(测速时长*发包速率)需小于60000次", Toast.LENGTH_SHORT).show();
 					return;
 				}
 
-				VPNManager.getInstance().StartCheck(addrA, addrB, selectType, iPackLen, iTimes, iTimeout, iMaxTime);
+				VPNManager.getInstance().StartCheck(addrA, addrB, typeBin, iPackLen, iTimes, iTimeout, iMaxTime);
 				
 				cleanResult();
 

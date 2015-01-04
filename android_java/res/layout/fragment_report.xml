@@ -8,17 +8,11 @@
     android:paddingTop="@dimen/activity_vertical_margin"
     >
 
-    <ScrollView
+    <ListView
+        android:id="@+id/listViewReport"
         android:layout_width="fill_parent"
-        android:layout_height="wrap_content" >
-
-        <TextView
-            android:id="@+id/textViewResultDeatil"
-            android:layout_width="fill_parent"
-            android:layout_height="fill_parent"
-            android:gravity="left|top"
-            android:lineSpacingExtra="5dp"
-            android:text="@string/textNil" />
-    </ScrollView>
+        android:layout_height="fill_parent"
+        android:fastScrollEnabled="true"
+        android:focusable="true" />
 
 </RelativeLayout>

@@ -1,9 +1,11 @@
 package pthread;
 
+import java.io.File;
 import java.util.Timer;
 import java.util.TimerTask;
 
 import jni.VPNJni;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -58,7 +60,9 @@ public class VPNManager extends Thread {
 
 	@Override
 	public void run() {
-		VPNJni.checkInit();
+		// ÉèÖÃsd¿¨Ä¿Â¼
+		File f = Environment.getExternalStorageDirectory();
+		VPNJni.checkInit(f.getPath().getBytes());
 		
 		task = new TimerTask() {
 			@Override

@@ -50,8 +50,9 @@ public class DataManager extends Thread {
 	
 	private boolean httpGetResponse(String body) {
 		try {
-			String head = String.format("POST /uploadData?UserId=%s HTTP/1.1\r\nUser-Agent: speed\r\nHost: 122.224.73.165:9004\r\nContent-Length: %d\r\nAccept: */*\r\n\r\n%s", this.userId, body.length(), body);
-			Socket socket = new Socket("122.224.73.165", 9004);
+			String head = String.format("POST /uploadData?UserId=%s HTTP/1.1\r\nUser-Agent: speed\r\nHost: 59.151.27.113:9004\r\nContent-Length: %d\r\nAccept: */*\r\n\r\n%s", this.userId, body.length(), body);
+			Socket socket = new Socket("59.151.27.113", 9004);
+			socket.setSoTimeout(3000);
 			OutputStream os = socket.getOutputStream();
 			os.write(head.getBytes());
 			BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -72,17 +73,11 @@ public class DataManager extends Thread {
 		return false;
 	}
 
-	private void uploadDetailResult() {
-		StringBuffer sb = new StringBuffer();
-		for (String m:this.list) {
-			sb.append(m);
-		}
-		
+	private void uploadDetailResult(String body) {
 		Message msg = new Message();
 		msg.what = VPNJni.ACTION_UPLOAD_FAIL;
-		if (httpGetResponse(sb.toString())) {
+		if (httpGetResponse(body)) {
 			msg.what = VPNJni.ACTION_UPLOAD_SUCC;
-			this.list.clear();
 		}
 		viewHandler.sendMessage(msg);
 		
@@ -95,10 +90,11 @@ public class DataManager extends Thread {
 		this.handler.sendMessage(msg);
 	}
 
-	public void uploadResult(Handler h) {
+	public void uploadResult(Handler h, String body) {
 		this.viewHandler = h;
 		Message msg = new Message();
 		msg.what = UPLOAD_RESULT;
+		msg.obj = body;
 		this.handler.sendMessage(msg);
 	}
 
@@ -118,7 +114,7 @@ public class DataManager extends Thread {
 					saveDetailArray((String) msg.obj);
 					break;
 				case UPLOAD_RESULT:
-					uploadDetailResult();
+					uploadDetailResult((String) msg.obj);
 					break;
 				}
 			}
